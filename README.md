@@ -15,6 +15,7 @@ Our mission is to provide an accessible, understandable, and extensible platform
 - [📂 Project Structure](#-project-structure)
 - [🏁 Getting Started](#-getting-started)
 - [💡 Defining Your Own Algorithmic Quests!](#-defining-your-own-algorithmic-quests)
+- [💋 Kissing Number Problem: A Case Study](#-kissing-number-problem-a-case-study)
 - [🔮 The Horizon: Future Evolution](#-the-horizon-future-evolution)
 - [🤝 Join the Evolution: Contributing](#-join-the-evolution-contributing)
 - [📜 License](#-license)
@@ -110,8 +111,8 @@ OpenAlpha_Evolve employs a modular, agent-based architecture to orchestrate an e
 
 2.  **Clone the Repository**:
     ```bash
-    git clone https://github.com/shyamsaktawat/OpenAlpha_Evolve.git
-    cd OpenAlpha_Evolve
+    git clone https://github.com/estoil/my_alpha_envolve.git
+    cd my_alpha_envolve
     ```
 
 3.  **Set Up a Virtual Environment** (recommended):
@@ -241,6 +242,73 @@ Crafting effective task definitions is key to guiding OpenAlpha_Evolve successfu
 *   **Specify Constraints and Edge Cases**: Mention specific constraints and edge cases in the description.
 *   **Define Expected Function Signature**: Clearly state the expected function name and parameters.
 *   **Iterate and Refine**: Review and refine your task definition based on the agent's performance.
+
+---
+
+## 💋 Kissing Number Problem: A Case Study
+
+This repository includes extensive work on the **Kissing Number Problem**, a classic mathematical optimization challenge. The kissing number problem asks: *In n-dimensional Euclidean space, what is the maximum number of non-overlapping unit spheres that can be arranged such that they all touch (are tangent to) a central unit sphere?*
+
+### Our Contributions
+
+We have implemented and optimized the framework specifically for the **5-dimensional kissing number problem**, which is still an open research question with a known lower bound of 40 and an upper bound of 48.
+
+#### Key Features:
+
+1. **Specialized Evaluator** (`evaluator_agent/kissing_number_evaluator.py`):
+   - Custom evaluation agent specifically designed for kissing number problems
+   - Automatic extraction of 5D kissing number values from generated code
+   - SOTA-based scoring system that rewards solutions closer to or exceeding the current best known lower bound (40-44)
+
+2. **Enhanced Selection Mechanism**:
+   - Modified selection algorithms that prioritize programs based on kissing number values
+   - Multi-criteria fitness evaluation: correctness, SOTA score, kissing number value, and execution time
+   - Improved parent and survivor selection that favors solutions with higher kissing numbers
+
+3. **Task Definitions**:
+   - `examples/kissing_number.yaml`: General kissing number problem for multiple dimensions
+   - `examples/kissing_number_optimized_5d.yaml`: Optimized task definition for 5D with expert knowledge and detailed algorithm guidance
+
+4. **Results Export System** (`results_exporter.py`):
+   - Automated export of evolutionary results to structured formats
+   - Text reports with detailed statistics and top-performing programs
+   - JSON format for programmatic analysis
+   - 5D Kissing Number leaderboard tracking
+
+5. **Comprehensive Documentation**:
+   - `IMPROVE_5D_GUIDE.md`: Detailed guide on the improvements made, including:
+     - Mathematical background and known constructions (D₅, L₅, Q₅)
+     - Implementation strategies and optimization approaches
+     - Configuration recommendations
+     - Result analysis and interpretation
+
+### Running Kissing Number Experiments
+
+```bash
+# Run the optimized 5D kissing number task
+python -m main examples/kissing_number_optimized_5d.yaml
+
+# Run the general kissing number problem
+python -m main examples/kissing_number.yaml
+```
+
+Results will be automatically exported to the `results/` directory, including:
+- Best programs with their 5D kissing number values
+- SOTA score comparisons
+- Detailed fitness metrics
+- Complete program code
+
+### Known Results
+
+- **1D**: 2 (exact)
+- **2D**: 6 (exact)
+- **3D**: 12 (exact)
+- **4D**: 24 (exact)
+- **5D**: Lower bound 40, Upper bound 48 (open problem - this is our focus!)
+- **8D**: 240 (exact)
+- **24D**: 196560 (exact)
+
+For 5D, our framework uses advanced evaluation and selection strategies to explore solutions that approach or exceed the current best known lower bound.
 
 ---
 
