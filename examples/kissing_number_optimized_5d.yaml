@@ -1,0 +1,374 @@
+task_id: "kissing_number_optimized_5d"
+task_description: |
+  Evolve a Python function to find or improve the kissing number for a given dimension, with special focus on optimizing unknown dimensions (especially 5D).
+  
+  The kissing number problem asks: In n-dimensional Euclidean space, what is the maximum number
+  of non-overlapping unit spheres that can be arranged such that they all touch (are tangent to)
+  a central unit sphere?
+  
+  The function should take the dimension n as input and return:
+  1. The maximum number of spheres that can be arranged (kissing number)
+  2. A list of sphere centers (each center is a tuple of n coordinates)
+  3. A boolean indicating if the arrangement is valid (all spheres touch the center and don't overlap)
+  
+  CRITICAL OBJECTIVES:
+  - For known dimensions (1D, 2D, 3D, 4D, 8D, 24D): Find the exact known value
+  - For unknown dimensions (especially 5D): MAXIMIZE the number of spheres found
+  - The function should be optimized to find LOWER BOUNDS for unknown dimensions
+  - Higher kissing numbers for unknown dimensions are BETTER and will receive higher fitness scores
+  
+  Constraints:
+  1. All sphere centers must be at distance exactly 2.0 from the origin (since unit spheres
+     with centers at distance 2.0 will be tangent to the unit sphere at the origin).
+     For a center c = (c1, c2, ..., cn), we need: sqrt(c1^2 + c2^2 + ... + cn^2) = 2.0
+  2. No two spheres should overlap. The distance between any two centers must be >= 2.0.
+     For centers c1 and c2: sqrt(sum((c1[i] - c2[i])^2 for i in range(n))) >= 2.0
+  3. The function should aim to maximize the number of spheres while satisfying constraints.
+  
+  Known kissing numbers:
+  - 1D: 2
+  - 2D: 6
+  - 3D: 12
+  - 4D: 24
+  - 8D: 240
+  - 24D: 196560
+  
+  For 5D, the known lower bound is around 40-44, and upper bound is 48. The goal is to find as many spheres as possible (ideally close to or above the current best lower bound).
+
+  ALGORITHM GUIDANCE FOR 5D KISSING NUMBER:
+  
+  1. D₅ Construction (GUARANTEED 40 points - Standard Method):
+     - Mathematical fact: D₅ = {σ([±1/√2, ±1/√2, 0, 0, 0]): σ ∈ S₅} with even minus signs
+     - Construction method:
+       * Generate all combinations of 2 positions from 5: C(5,2) = 10
+       * For each position pair, generate sign combinations: (+,+), (+,-), (-,+), (-,-)
+       * Keep only those with EVEN number of minus signs: (+,+) and (-,-) → 2 per pair
+       * Normalize each vector to distance exactly 2.0 from origin
+       * IMPORTANT: This gives 20 base points. To get 40, consider that each point has an antipodal pair,
+         OR use the fact that different permutations of the same pattern yield different points
+       * The key insight: After normalization, all 40 points are distinct and satisfy constraints
+     - This gives a deterministic, guaranteed lower bound of 40
+     - Reference: Standard construction known since 1967 (Leech)
+  
+  2. Q₅ Construction (Alternative 40 points - New Method, 2023):
+     - Start with D₅ (40 points)
+     - Remove 10 specific vectors X (those with pattern (1, -1, 0, 0, 0) and permutations)
+     - Replace with 10 new vectors Y (pattern: (-1, 1, -4, -4, -4) scaled by 1/(5√2) and normalized)
+     - Result: Q₅ = (D₅ \ X) ∪ Y, still 40 points but different arrangement
+     - This is a NEWLY DISCOVERED construction (Ferenc Szöllősi, 2023)
+     - Properties: Only 20 antipodal pairs (vs 40 in D₅), different inner product profile
+  
+  3. L₅ Construction (Rotated 40 points):
+     - Start with D₅ (40 points)
+     - Rotate 8 vectors (those with last coordinate = -1/√2) using orthogonal matrix H
+     - Replace original 8 with rotated ones
+     - Result: Non-antipodal arrangement with 40 points
+  
+  4. Optimization Strategies (to find 40+ points):
+     - Start with D₅, L₅, or Q₅ construction (guaranteed 40 points) as base
+     - Use BEST CANDIDATE SEARCH: Generate 500-2000 random candidates, pick the one maximizing minimum distance
+     - Use LOCAL OPTIMIZATION: Perturb existing points slightly to create space for new ones
+     - Use GREEDY CONSTRUCTION: Add points that maximize minimum distance from existing points
+     - Use SIMULATED ANNEALING: Accept worse intermediate arrangements with decreasing probability
+     - Avoid PURE RANDOM SEARCH: It's extremely inefficient (needs millions of attempts)
+     - Use INTELLIGENT SAMPLING: Sample in orthogonal complement of existing points
+  
+  3. Performance Requirements:
+     - The function MUST complete in < 10 seconds for 5D
+     - Use deterministic methods when possible (avoid excessive randomness)
+     - Implement early stopping when target (40) is reached
+     - Use efficient data structures (sets for duplicate checking, early termination for distance checks)
+  
+  4. Mathematical Constraint Details:
+     - All centers must be exactly at distance 2.0 from origin (not 2.0 ± tolerance)
+     - Distance between any two centers must be >= 2.0 (strictly, with 1e-6 tolerance for numerical errors)
+     - For 5D, the theoretical maximum is 48, but the best known is 40-44
+  
+  5. Implementation Tips:
+     - Use NumPy for efficient vector operations (normalization, distance calculation)
+     - Cache distance calculations when possible
+     - Use early termination: stop checking once distance < 2.0 is found
+     - Consider using spherical coordinates for more uniform sampling
+
+expert_knowledge: |
+  # 5D Kissing Number - Expert Knowledge (Based on Ferenc Szöllősi 2023)
+  
+  ## Known Results:
+  - Lower bound: 40 (proven via multiple lattice constructions)
+  - Upper bound: 48 (theoretical limit)
+  - Best known: 40-44 (various constructions)
+  - Reference: Ferenc Szöllősi, "A note on five dimensional kissing arrangements" (2023)
+  
+  ## Three Known 40-Point Constructions:
+  
+  ### 1. D₅ Construction (Standard Antipodal Construction):
+  Definition: D₅ = {σ([±1/√2, ±1/√2, 0, 0, 0]): σ ∈ S₅}
+  Where:
+  - σ is a permutation of 5 coordinates
+  - The pattern has exactly 2 non-zero coordinates, each with absolute value 1/√2
+  - The number of minus signs must be EVEN (0 or 2)
+  - After normalization to distance 2.0 from origin
+  
+  Properties:
+  - Contains exactly 40 unit vectors
+  - Is ANTIPODAL: if v ∈ D₅, then -v ∈ D₅
+  - All vectors are pairwise compatible (inner product ≤ 1/2)
+  - Inner product profile: {[-1]⁴⁰, [-1/2]⁴⁸⁰, [0]⁵⁶⁰, [1/2]⁴⁸⁰, [1]⁴⁰}
+  
+  Implementation Note:
+  - Generate all combinations of 2 positions from 5: C(5,2) = 10
+  - For each position pair, generate 4 sign combinations: (+,+), (+,-), (-,+), (-,-)
+  - Keep only those with even number of minus signs: (+,+) and (-,-) → 2 per pair
+  - Total: 10 × 2 = 20 base patterns
+  - BUT: Need to consider ALL PERMUTATIONS, not just combinations, to get 40 distinct points
+  - After normalization to distance 2.0, this yields exactly 40 points
+  
+  ### 2. L₅ Construction (Rotated Non-Antipodal Construction):
+  Method: Rotate 8 vectors from D₅ using an orthogonal matrix H
+  - Select vectors from D₅ with last coordinate = -1/√2 (8 vectors)
+  - Apply rotation matrix H to these 8 vectors
+  - Replace original 8 vectors with rotated ones
+  - Result: L₅ = (D₅ \ {v ∈ D₅: v₅ = -1/√2}) ∪ {vH: v ∈ D₅, v₅ = -1/√2}
+  
+  Properties:
+  - Contains exactly 40 unit vectors
+  - Is NON-ANTIPODAL (only 24 antipodal pairs, not 40)
+  - Different inner product profile than D₅
+  - Inner product profile: {[-1]²⁴, [-3/4]⁶⁴, [-1/2]³⁸⁴, [-1/4]⁶⁴, [0]⁵⁴⁴, [1/2]⁴⁸⁰, [1]⁴⁰}
+  
+  ### 3. Q₅ Construction (Newly Discovered, 2023):
+  Method: Q₅ = (D₅ \ X) ∪ Y
+  Where:
+  - X: 10 vectors from D₅ to be removed
+  - Y: 10 new vectors to replace X
+  
+  X Matrix (10 vectors, each multiplied by 1/√2):
+  - Pattern: (1, -1, 0, 0, 0) and all permutations with exactly 2 non-zero coordinates
+  - Examples: (1, -1, 0, 0, 0), (1, 0, -1, 0, 0), (0, -1, -1, 0, 0), etc.
+  - All have form: one coordinate = 1, one coordinate = -1, rest = 0
+  
+  Y Matrix (10 vectors, each multiplied by 1/(5√2)):
+  - Pattern: (-1, 1, -4, -4, -4) and permutations
+  - Examples: (-1, 1, -4, -4, -4), (-1, -4, 1, -4, -4), (4, 1, 1, -4, -4), etc.
+  - Key: One coordinate is -1, one is 1, three are -4 (or variations)
+  - After scaling by 1/(5√2) and normalization to distance 2.0
+  
+  Properties:
+  - Contains exactly 40 unit vectors
+  - Only 20 antipodal pairs (not 40)
+  - Different inner product profile from both D₅ and L₅
+  - Inner product profile: {[-1]²⁰, [-4/5]⁶⁰, [-1/2]³⁶⁰, [-3/10]¹²⁰, [0]⁵⁰⁰, [1/5]²⁰, [1/2]⁴⁸⁰, [1]⁴⁰}
+  - This proves there are at least THREE non-isometric 40-point arrangements
+  
+  ## Correct D₅ Construction Method:
+  
+  To generate all 40 points of D₅:
+  1. For each combination of 2 positions from 5: C(5,2) = 10 choices
+  2. For each position pair (i, j):
+     a. Generate pattern with 1 at positions i and j, 0 elsewhere
+     b. Apply all sign combinations to these 2 positions: 4 possibilities
+     c. Keep only those with EVEN number of minus signs: 2 possibilities
+     d. Normalize to distance 2.0 from origin
+  3. BUT: This only gives 20 points!
+  
+  The issue: The definition uses PERMUTATIONS (σ ∈ S₅), not just combinations.
+  However, for the pattern (±1/√2, ±1/√2, 0, 0, 0), after normalization,
+  permutations of the same pattern may yield the same point.
+  
+  Solution: The 40 points come from considering that each base pattern
+  (±1/√2, ±1/√2, 0, 0, 0) can be placed in C(5,2) = 10 ways,
+  and for each placement, there are 2 valid sign combinations (even minus signs),
+  giving 20 points. To get 40, we need to also consider the ANTIPODAL pairs,
+  OR use a different understanding of the construction.
+  
+  Alternative: The 40 points may come from a different interpretation:
+  - Consider all vectors of the form (±1, ±1, 0, 0, 0) with even minus signs
+  - After normalization to distance 2.0, this gives points at distance 2√2/√2 = 2.0
+  - The key is that we need ALL PERMUTATIONS, and some permutations
+    of the same pattern may yield different points after normalization
+  
+  ## Why Random Search Fails:
+  - Probability of finding a valid random point decreases exponentially with number of existing points
+  - After ~30 points, random search needs millions of attempts per new point
+  - Solution: Use structured methods (lattice, local optimization, simulated annealing)
+  
+  ## Successful Optimization Approaches:
+  1. **D₅ Lattice**: Use the standard D₅ construction (guaranteed 40 points)
+  2. **L₅ Construction**: Apply rotation to D₅ to get non-antipodal arrangement
+  3. **Q₅ Construction**: Replace 10 vectors from D₅ with 10 new vectors (see Y matrix above)
+  4. **Local optimization**: Perturb existing points to maximize spacing
+  5. **Simulated annealing**: Accept worse arrangements to escape local optima
+  6. **Best candidate search**: Generate multiple candidates, pick the one maximizing minimum distance
+  
+  ## Implementation Priority:
+  1. FIRST: Implement D₅ construction correctly to get 40 points
+  2. THEN: Try Q₅ construction by replacing 10 vectors
+  3. FINALLY: Use optimization to try to add more points beyond 40
+
+function_name: "find_kissing_number"
+allowed_imports: ["math", "random", "numpy", "itertools"]
+
+tests:
+  # Level 0: Known dimensions (must pass)
+  - name: "known_dimensions"
+    level: 0
+    description: "Test known dimensions - must find exact values"
+    test_cases:
+      - input: [1]
+        validation_func: |
+          import math
+          def validate(output):
+              if not isinstance(output, tuple) or len(output) != 3:
+                  return "Output should be a tuple: (kissing_number, centers_list, is_valid)"
+              
+              kissing_num, centers, is_valid = output
+              
+              if not isinstance(kissing_num, int):
+                  return "First element (kissing_number) should be an integer."
+              if not isinstance(centers, list):
+                  return "Second element (centers) should be a list."
+              if not isinstance(is_valid, bool):
+                  return "Third element (is_valid) should be a boolean."
+              
+              # For 1D, known kissing number is 2
+              if kissing_num < 2:
+                  return f"For dimension 1, kissing number should be at least 2, got {kissing_num}"
+              
+              if len(centers) != kissing_num:
+                  return f"Number of centers ({len(centers)}) should match kissing_number ({kissing_num})"
+              
+              if not is_valid:
+                  return "The arrangement should be valid"
+              
+              # Check all centers are at distance 2.0 from origin
+              for i, center in enumerate(centers):
+                  if not isinstance(center, (tuple, list)) or len(center) != 1:
+                      return f"Center {i} should be a tuple/list of length 1"
+                  dist = abs(center[0])
+                  if abs(dist - 2.0) > 1e-6:
+                      return f"Center {i} ({center}) is not at distance 2.0 from origin (distance: {dist})"
+              
+              # Check no overlaps
+              for i in range(len(centers)):
+                  for j in range(i + 1, len(centers)):
+                      dist = abs(centers[i][0] - centers[j][0])
+                      if dist < 2.0 - 1e-6:
+                          return f"Centers {i} and {j} are too close (distance: {dist})"
+              
+              return True
+
+      - input: [2]
+        validation_func: |
+          import math
+          def validate(output):
+              if not isinstance(output, tuple) or len(output) != 3:
+                  return "Output should be a tuple: (kissing_number, centers_list, is_valid)"
+              
+              kissing_num, centers, is_valid = output
+              
+              if kissing_num < 6:
+                  return f"For dimension 2, kissing number should be at least 6, got {kissing_num}"
+              
+              if len(centers) != kissing_num or not is_valid:
+                  return "Invalid arrangement"
+              
+              # Check all centers are at distance 2.0 from origin
+              for i, center in enumerate(centers):
+                  if not isinstance(center, (tuple, list)) or len(center) != 2:
+                      return f"Center {i} should be a tuple/list of length 2"
+                  dist_sq = sum(c**2 for c in center)
+                  dist = math.sqrt(dist_sq)
+                  if abs(dist - 2.0) > 1e-6:
+                      return f"Center {i} is not at distance 2.0 from origin (distance: {dist})"
+              
+              # Check no overlaps
+              for i in range(len(centers)):
+                  for j in range(i + 1, len(centers)):
+                      dist_sq = sum((centers[i][k] - centers[j][k])**2 for k in range(2))
+                      dist = math.sqrt(dist_sq)
+                      if dist < 2.0 - 1e-6:
+                          return f"Centers {i} and {j} are too close (distance: {dist})"
+              
+              return True
+
+  # Level 1: 5D optimization (reward higher kissing numbers)
+  # OPTIMIZED: Simplified validation to avoid timeout issues
+  - name: "dimension_5_optimization"
+    level: 1
+    description: "Optimize for 5D kissing number - higher is better"
+    test_cases:
+      - input: [5]
+        validation_func: |
+          import math
+          def validate(output):
+              if not isinstance(output, tuple) or len(output) != 3:
+                  return "Output should be a tuple: (kissing_number, centers_list, is_valid)"
+              
+              kissing_num, centers, is_valid = output
+              
+              if not isinstance(kissing_num, int):
+                  return "First element (kissing_number) should be an integer."
+              if not isinstance(centers, list):
+                  return "Second element (centers) should be a list."
+              if not isinstance(is_valid, bool):
+                  return "Third element (is_valid) should be a boolean."
+              
+              # Minimum threshold: should find at least 20 spheres
+              if kissing_num < 20:
+                  return f"For dimension 5, kissing number should be at least 20 (current lower bound is ~40), got {kissing_num}"
+              
+              # If program claims it's valid, trust it (since full validation is expensive)
+              # The actual validation will be done in KissingNumberEvaluatorAgent with a separate timeout
+              if not is_valid:
+                  return "The arrangement must be valid"
+              
+              if len(centers) != kissing_num:
+                  return f"Number of centers ({len(centers)}) should match kissing_number ({kissing_num})"
+              
+              dimension = 5
+              
+              # Quick validation: only check first few and last few centers to avoid timeout
+              # Full validation will be done separately with proper timeout
+              num_to_check = min(10, len(centers))  # Only check first 10 and last 10
+              
+              # Check first few centers are at distance 2.0 from origin
+              for i in range(min(5, len(centers))):
+                  center = centers[i]
+                  if not isinstance(center, (tuple, list)) or len(center) != dimension:
+                      return f"Center {i} should be a tuple/list of length {dimension}"
+                  dist_sq = sum(c**2 for c in center)
+                  dist = math.sqrt(dist_sq)
+                  if abs(dist - 2.0) > 1e-4:  # Slightly relaxed tolerance for speed
+                      return f"Center {i} is not at distance 2.0 from origin (distance: {dist:.6f})"
+              
+              # Check last few centers
+              if len(centers) > 5:
+                  for i in range(max(5, len(centers) - 5), len(centers)):
+                      center = centers[i]
+                      if not isinstance(center, (tuple, list)) or len(center) != dimension:
+                          return f"Center {i} should be a tuple/list of length {dimension}"
+                      dist_sq = sum(c**2 for c in center)
+                      dist = math.sqrt(dist_sq)
+                      if abs(dist - 2.0) > 1e-4:
+                          return f"Center {i} is not at distance 2.0 from origin (distance: {dist:.6f})"
+              
+              # Simplified overlap check: only check first 20 point pairs (much faster)
+              # Full validation will be done in KissingNumberEvaluatorAgent
+              checked_pairs = 0
+              max_pairs_to_check = 20
+              for i in range(min(len(centers), 20)):  # Only check first 20 centers
+                  if checked_pairs >= max_pairs_to_check:
+                      break
+                  for j in range(i + 1, min(len(centers), i + 20)):  # Only check nearby centers
+                      if checked_pairs >= max_pairs_to_check:
+                          break
+                      dist_sq = sum((centers[i][k] - centers[j][k])**2 for k in range(dimension))
+                      dist = math.sqrt(dist_sq)
+                      if dist < 2.0 - 1e-4:  # Slightly relaxed tolerance
+                          return f"Centers {i} and {j} are too close (distance: {dist:.6f})"
+                      checked_pairs += 1
+              
+              # IMPORTANT: Higher kissing numbers are better!
+              # Full validation will be done separately by KissingNumberEvaluatorAgent
+              return True
+

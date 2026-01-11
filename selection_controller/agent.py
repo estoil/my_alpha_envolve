@@ -31,16 +31,36 @@ class Island:
     def get_best_program(self) -> Optional[Program]:
         if not self.programs:
             return None
-        # Sort by correctness (higher is better), runtime (lower is better), generation (lower/older is better), and creation time (older is better)
-        best_program = max(
-            self.programs,
-            key=lambda p: (
-                p.fitness_scores.get("correctness", 0.0),  # Higher correctness preferred
-                -p.fitness_scores.get("runtime_ms", float('inf')),  # Lower runtime preferred
-                -p.generation,  # Older generation preferred
-                -p.created_at  # Older creation time preferred as tiebreaker
-            )
+        # Sort using enhanced fitness key (considering kissing_number for kissing_number tasks)
+        # Check if this is a kissing_number task by checking if any program has kissing_number_5d
+        is_kissing_task = any(
+            p.fitness_scores.get("kissing_number_5d", 0) > 0 
+            for p in self.programs
         )
+        
+        if is_kissing_task:
+            best_program = max(
+                self.programs,
+                key=lambda p: (
+                    p.fitness_scores.get("correctness", 0.0),
+                    p.fitness_scores.get("sota_score_5d", 0.0),
+                    p.fitness_scores.get("kissing_number_5d", 0.0),
+                    p.fitness_scores.get("kissing_number_5d_valid", 0.0),
+                    -p.fitness_scores.get("runtime_ms", float('inf')),
+                    -p.generation,
+                    -p.created_at
+                )
+            )
+        else:
+            best_program = max(
+                self.programs,
+                key=lambda p: (
+                    p.fitness_scores.get("correctness", 0.0),
+                    -p.fitness_scores.get("runtime_ms", float('inf')),
+                    -p.generation,
+                    -p.created_at
+                )
+            )
         if settings.DEBUG:
             logger.debug(f"Island {self.island_id} best program: ID={best_program.id}, "
                         f"Correctness={best_program.fitness_scores.get('correctness')}, "
@@ -71,6 +91,46 @@ class SelectionControllerAgent(SelectionControllerInterface, BaseAgent):
         self.islands: Dict[int, Island] = {}
         self.current_generation = 0
         logger.info(f"SelectionControllerAgent initialized with {self.num_islands} islands and elitism_count: {self.elitism_count}")
+    
+    def _get_fitness_key(self, program: Program) -> tuple:
+        """
+        计算程序的适应度排序键，用于选择和排序
+        对于 kissing number 任务，优先考虑 kissing_number_5d 和 sota_score
+        """
+        correctness = program.fitness_scores.get("correctness", 0.0)
+        runtime_ms = program.fitness_scores.get("runtime_ms", float('inf'))
+        
+        # 对于 kissing number 任务，使用 kissing_number_5d 和 sota_score
+        kissing_5d = program.fitness_scores.get("kissing_number_5d", 0.0)
+        sota_score = program.fitness_scores.get("sota_score_5d", 0.0)
+        is_valid = program.fitness_scores.get("kissing_number_5d_valid", 0.0)
+        
+        # 如果任务包含 kissing_number，使用增强的排序键
+        # 从 program.id 或 task_id 中检查
+        task_id = getattr(program, 'task_id', None) or ""
+        if not task_id and hasattr(program, 'id'):
+            # 从 id 中提取 task_id（格式：task_id_gen0_prog0）
+            parts = program.id.split('_gen')
+            task_id = parts[0] if len(parts) > 0 else ""
+        
+        if "kissing_number" in task_id and kissing_5d > 0:
+            # 排序键：(correctness, sota_score, kissing_5d, is_valid, -runtime_ms, -generation)
+            # 这样能确保：正确性 > SOTA 评分 > Kissing Number 值 > 有效性 > 运行时间 > 代数
+            return (
+                correctness,           # 主要指标：整体正确率
+                sota_score,            # SOTA 评分（基于下界的距离）
+                kissing_5d,            # 5 维 kissing number 值（越高越好）
+                is_valid,              # 有效性（1.0 或 0.0）
+                -runtime_ms,           # 运行时间（越小越好，所以取负）
+                -program.generation    # 代数（越早越好，所以取负）
+            )
+        else:
+            # 标准排序键：仅考虑 correctness 和 runtime
+            return (
+                correctness,
+                -runtime_ms,
+                -program.generation
+            )
 
     def initialize_islands(self, initial_programs: List[Program]) -> None:
         """Initialize islands with the initial population."""
@@ -116,7 +176,7 @@ class SelectionControllerAgent(SelectionControllerInterface, BaseAgent):
         # Deduplicate elites (in case of migration having same elite in multiple islands)
         unique_elites = []
         seen_elite_ids = set()
-        for elite in sorted(all_elites, key=lambda p: (p.fitness_scores.get("correctness", 0.0), -p.fitness_scores.get("runtime_ms", float('inf')), -p.generation), reverse=True):
+        for elite in sorted(all_elites, key=self._get_fitness_key, reverse=True):
             if elite.id not in seen_elite_ids:
                 unique_elites.append(elite)
                 seen_elite_ids.add(elite.id)
@@ -142,7 +202,7 @@ class SelectionControllerAgent(SelectionControllerInterface, BaseAgent):
             # Sort island programs to pick non-elites for roulette
             sorted_island_programs = sorted(
                 island.programs,
-                key=lambda p: (p.fitness_scores.get("correctness", 0.0), -p.fitness_scores.get("runtime_ms", float('inf')), -p.generation),
+                key=self._get_fitness_key,
                 reverse=True
             )
             for program in sorted_island_programs:
@@ -162,7 +222,17 @@ class SelectionControllerAgent(SelectionControllerInterface, BaseAgent):
             return selected_parents
 
         # Perform roulette wheel selection on the combined pool of unique candidates
-        total_fitness_roulette = sum(p.fitness_scores.get("correctness", 0.0) + 0.0001 for p in unique_roulette_candidates) # Add small constant to allow selection of 0 fitness programs
+        # For kissing_number tasks, use enhanced fitness (correctness + SOTA bonus)
+        # For other tasks, use standard correctness
+        def get_roulette_fitness(p: Program) -> float:
+            base_fitness = p.fitness_scores.get("correctness", 0.0)
+            # Add SOTA bonus for kissing_number tasks
+            if p.fitness_scores.get("kissing_number_5d", 0) > 0:
+                sota_bonus = p.fitness_scores.get("sota_score_5d", 0.0) * 0.3
+                return base_fitness + sota_bonus + 0.0001
+            return base_fitness + 0.0001
+        
+        total_fitness_roulette = sum(get_roulette_fitness(p) for p in unique_roulette_candidates)
 
         if total_fitness_roulette <= 0.0001 * len(unique_roulette_candidates): # All candidates have near zero fitness
             num_to_select_randomly = min(remaining_parents_to_select, len(unique_roulette_candidates))
@@ -176,11 +246,12 @@ class SelectionControllerAgent(SelectionControllerInterface, BaseAgent):
                 current_sum = 0
                 chosen_parent = None
                 for i, program in enumerate(unique_roulette_candidates):
-                    current_sum += (program.fitness_scores.get("correctness", 0.0) + 0.0001)
+                    fitness_val = get_roulette_fitness(program)
+                    current_sum += fitness_val
                     if current_sum >= pick:
                         chosen_parent = program
                         unique_roulette_candidates.pop(i) # Remove chosen parent from further selection
-                        total_fitness_roulette -= (chosen_parent.fitness_scores.get("correctness", 0.0) + 0.0001) # Adjust total fitness
+                        total_fitness_roulette -= fitness_val # Adjust total fitness
                         break
                 
                 if chosen_parent:
@@ -246,14 +317,10 @@ class SelectionControllerAgent(SelectionControllerInterface, BaseAgent):
                     logger.debug(f"Island {island_id} became empty")
                 continue
 
-            # Sort by correctness (higher is better), runtime (lower is better), and generation (lower/older is better)
+            # Sort using enhanced fitness key that considers kissing_number for kissing_number tasks
             sorted_combined = sorted(
                 combined_population,
-                key=lambda p: (
-                    p.fitness_scores.get("correctness", 0.0),  # Higher correctness preferred
-                    -p.fitness_scores.get("runtime_ms", float('inf')),  # Lower runtime preferred
-                    -p.generation  # Older generation preferred
-                ),
+                key=self._get_fitness_key,
                 reverse=True
             )
 

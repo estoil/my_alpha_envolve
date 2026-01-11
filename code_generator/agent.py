@@ -1,7 +1,13 @@
 import logging
 import re
+import warnings
 from typing import Optional, Dict, Any
 import asyncio
+
+# 抑制 LiteLLM 相关的 Pydantic 序列化警告（不影响功能，只是日志噪音）
+# 这些警告来自 LiteLLM 内部使用 Pydantic 模型时的序列化问题
+warnings.filterwarnings("ignore", category=UserWarning, module="pydantic")
+warnings.filterwarnings("ignore", message=".*Pydantic.*serializer.*", category=UserWarning)
 
 from litellm import acompletion
 from litellm.exceptions import (
@@ -21,15 +27,20 @@ class CodeGeneratorAgent(CodeGeneratorInterface):
     def __init__(self, config: Optional[Dict[str, Any]] = None):
         super().__init__(config)
         self.model_name = settings.LITELLM_DEFAULT_MODEL
-        self.generation_config = {
-            "temperature": settings.LITELLM_TEMPERATURE,
-            "top_p": settings.LITELLM_TOP_P,
-            "top_k": settings.LITELLM_TOP_K,
-            "max_tokens": settings.LITELLM_MAX_TOKENS,
-        }
-        self.litellm_extra_params = {
-            "base_url": settings.LITELLM_DEFAULT_BASE_URL,
-        }
+        # Build generation config, filtering out None values
+        self.generation_config = {}
+        if settings.LITELLM_TEMPERATURE is not None:
+            self.generation_config["temperature"] = settings.LITELLM_TEMPERATURE
+        if settings.LITELLM_TOP_P is not None:
+            self.generation_config["top_p"] = settings.LITELLM_TOP_P
+        if settings.LITELLM_TOP_K is not None:
+            self.generation_config["top_k"] = settings.LITELLM_TOP_K
+        if settings.LITELLM_MAX_TOKENS is not None:
+            self.generation_config["max_tokens"] = settings.LITELLM_MAX_TOKENS
+        
+        self.litellm_extra_params = {}
+        if settings.LITELLM_DEFAULT_BASE_URL is not None:
+            self.litellm_extra_params["base_url"] = settings.LITELLM_DEFAULT_BASE_URL
         logger.info(f"CodeGeneratorAgent initialized with model: {self.model_name}")
 
     async def generate_code(self, prompt: str, model_name: Optional[str] = None, temperature: Optional[float] = None, output_format: str = "code", litellm_extra_params: Optional[Dict[str, Any]] = None) -> str:
@@ -83,6 +94,9 @@ Make sure your diff can be applied correctly!
             current_generation_config["temperature"] = temperature
             logger.debug(f"Using temperature override: {temperature}")
 
+        # Filter out None values to avoid passing them to the API
+        current_generation_config = {k: v for k, v in current_generation_config.items() if v is not None}
+        
         retries = settings.API_MAX_RETRIES
         delay = settings.API_RETRY_DELAY_SECONDS
         

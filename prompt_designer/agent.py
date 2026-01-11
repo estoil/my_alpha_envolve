@@ -88,6 +88,30 @@ class PromptDesignerAgent(PromptDesignerInterface, BaseAgent):
         elif correctness == 1.0:
             feedback_parts.append("- The code achieved 100% correctness. Consider optimizing for efficiency or exploring alternative correct solutions.")
         
+        # 对于 kissing number 任务，添加 5D kissing number 信息（优先从 evaluation_feedback，否则从 program.fitness_scores）
+        if self.task_definition.id and "kissing_number" in self.task_definition.id:
+            kissing_5d = evaluation_feedback.get("kissing_number_5d") or program.fitness_scores.get("kissing_number_5d")
+            sota_score = evaluation_feedback.get("sota_score_5d") or program.fitness_scores.get("sota_score_5d")
+            kissing_5d_valid = evaluation_feedback.get("kissing_number_5d_valid")
+            if kissing_5d_valid is None:
+                kissing_5d_valid = program.fitness_scores.get("kissing_number_5d_valid", 0.0)
+            
+            if kissing_5d is not None and kissing_5d > 0:
+                feedback_parts.append(f"- 5D Kissing Number Performance: Found {int(kissing_5d)} spheres (Validity: {'Valid' if kissing_5d_valid == 1.0 else 'Invalid'})")
+                if sota_score is not None:
+                    feedback_parts.append(f"- SOTA Score: {sota_score:.4f} (max: 1.0, target: 40-44 spheres for high score)")
+                
+                # 提供改进指导（更详细的算法建议）
+                if int(kissing_5d) < 40:
+                    feedback_parts.append(f"- IMPROVEMENT GOAL: Current ({int(kissing_5d)}) < SOTA lower bound (40). CRITICAL: Use D5* lattice construction for guaranteed 40 points. Method: Generate all permutations of (±1, ±1, 0, 0, 0) with EVEN number of minus signs, scale to radius 2. Avoid pure random search - it needs millions of attempts and is too slow.")
+                elif int(kissing_5d) < 44:
+                    feedback_parts.append(f"- IMPROVEMENT GOAL: Current ({int(kissing_5d)}) is good but below target (44). Try: (1) Start with D5* lattice (40 points), (2) Use local optimization to perturb existing points and create space, (3) Use simulated annealing to accept temporary worse arrangements, (4) Use greedy construction adding points that maximize minimum distance. Avoid pure random search.")
+                elif int(kissing_5d) >= 44:
+                    feedback_parts.append(f"- EXCELLENT: Current ({int(kissing_5d)}) reaches or exceeds the target! Try to push even higher (up to theoretical upper bound 48). Consider advanced optimization: multi-start local search, genetic algorithms, or mathematical constructions.")
+                
+                if kissing_5d_valid != 1.0:
+                    feedback_parts.append(f"- WARNING: The arrangement is invalid. Ensure all centers are at distance exactly 2.0 from origin (sqrt(sum(c^2)) = 2.0) and pairwise distance >= 2.0.")
+        
         if not feedback_parts:
              return "The previous version was evaluated, but no specific feedback details were captured. Try a general improvement."
 

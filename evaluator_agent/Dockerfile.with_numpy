@@ -1,0 +1,14 @@
+# Dockerfile with numpy support for kissing_number task
+FROM python:3.10-slim
+
+# Set working directory
+WORKDIR /app
+
+# Install numpy using Chinese mirror for faster download
+RUN pip install --no-cache-dir -i https://pypi.tuna.tsinghua.edu.cn/simple numpy
+
+# Ensure Python's output is unbuffered
+ENV PYTHONUNBUFFERED=1
+
+# The default command can be omitted if the command is always specified during `docker run`
+# CMD ["python"]

@@ -1,0 +1,6 @@
+Traceback (most recent call last):
+  File "/Users/wang/Desktop/2026aut/machine learning/open_alpha_envolve/OpenAlpha_Evolve/test_best_program_new.py", line 5, in <module>
+    import numpy as np
+ModuleNotFoundError: No module named 'numpy'
+
+ERROR conda.cli.main_run:execute(125): `conda run python3 test_best_program_new.py` failed. (See above for error)

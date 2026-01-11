@@ -13,6 +13,7 @@ from config import settings
 from prompt_designer.agent import PromptDesignerAgent
 from code_generator.agent import CodeGeneratorAgent
 from evaluator_agent.agent import EvaluatorAgent
+from evaluator_agent.kissing_number_evaluator import KissingNumberEvaluatorAgent
 from database_agent.agent import InMemoryDatabaseAgent
 from selection_controller.agent import SelectionControllerAgent
 
@@ -24,7 +25,14 @@ class TaskManagerAgent(TaskManagerInterface):
         self.task_definition = task_definition
         self.prompt_designer: PromptDesignerInterface = PromptDesignerAgent(task_definition=self.task_definition)
         self.code_generator: CodeGeneratorInterface = CodeGeneratorAgent()
-        self.evaluator: EvaluatorAgentInterface = EvaluatorAgent(task_definition=self.task_definition)
+        
+        # 如果是 kissing number 任务，使用改进的评估器
+        if task_definition.id and "kissing_number" in task_definition.id:
+            self.evaluator: EvaluatorAgentInterface = KissingNumberEvaluatorAgent(task_definition=self.task_definition)
+            logger.info(f"Using KissingNumberEvaluatorAgent for task: {task_definition.id}")
+        else:
+            self.evaluator: EvaluatorAgentInterface = EvaluatorAgent(task_definition=self.task_definition)
+            logger.info(f"Using standard EvaluatorAgent for task: {task_definition.id}")
         
         # Simplified database initialization:
         self.database: DatabaseAgentInterface = InMemoryDatabaseAgent()
@@ -59,7 +67,8 @@ class TaskManagerAgent(TaskManagerInterface):
                 id=program_id,
                 code=generated_code,
                 generation=0,
-                status="unevaluated"
+                status="unevaluated",
+                task_id=self.task_definition.id
             )
             initial_population.append(program)
             await self.database.save_program(program)
@@ -138,24 +147,85 @@ class TaskManagerAgent(TaskManagerInterface):
             current_population = self.selection_controller.select_survivors(current_population, offspring_population, self.population_size)
             logger.info(f"Generation {gen}: New population size: {len(current_population)}.")
 
-            # Log best program in this generation
-            best_program_this_gen = sorted(
-                current_population,
-                key=lambda p: (p.fitness_scores.get("correctness", -1), -p.fitness_scores.get("runtime_ms", float('inf'))),
-                reverse=True
-            )
-            if best_program_this_gen:
-                logger.info(f"Generation {gen}: Best program: ID={best_program_this_gen[0].id}, Fitness={best_program_this_gen[0].fitness_scores}")
+            # Log best program in this generation (using enhanced fitness key for kissing_number tasks)
+            if current_population:
+                best_program_this_gen = sorted(
+                    current_population,
+                    key=self.selection_controller._get_fitness_key,
+                    reverse=True
+                )[0]
+                
+                fitness_str = f"Fitness={best_program_this_gen.fitness_scores}"
+                # 如果是 kissing number 任务，显示额外的信息
+                if best_program_this_gen.fitness_scores.get("kissing_number_5d", 0) > 0:
+                    kissing_5d = int(best_program_this_gen.fitness_scores.get("kissing_number_5d", 0))
+                    sota_score = best_program_this_gen.fitness_scores.get("sota_score_5d", 0.0)
+                    fitness_str += f", 5D Kissing Number={kissing_5d}, SOTA Score={sota_score:.3f}"
+                
+                logger.info(f"Generation {gen}: Best program: ID={best_program_this_gen.id}, {fitness_str}")
             else:
                 logger.warning(f"Generation {gen}: No programs in current population after survival selection.")
                 break
 
         logger.info("Evolutionary cycle completed.")
-        final_best = await self.database.get_best_programs(task_id=self.task_definition.id, limit=1, objective="correctness")
-        if final_best:
-            logger.info(f"Overall Best Program: {final_best[0].id}, Code:\n{final_best[0].code}\nFitness: {final_best[0].fitness_scores}")
+        
+        # 获取最佳程序（使用增强的排序键）
+        # 优先使用当前种群，否则从数据库加载
+        if current_population and len(current_population) > 0:
+            task_programs = current_population
+            logger.info(f"Using current population ({len(task_programs)} programs) for best program selection")
         else:
-            logger.info("No best program found at the end of evolution.")
+            # 如果当前种群为空，从数据库加载
+            all_programs = await self.database.get_all_programs()
+            task_programs = [
+                p for p in all_programs 
+                if (self.task_definition.id in p.id or 
+                    self.task_definition.id in getattr(p, 'task_id', '') or
+                    ('_gen' in p.id and self.task_definition.id in p.id.split('_gen')[0]))
+            ]
+            logger.info(f"Loaded {len(task_programs)} programs from database for task {self.task_definition.id}")
+        
+        if task_programs:
+            # 使用增强的适应度键排序
+            sorted_programs = sorted(
+                task_programs,
+                key=self.selection_controller._get_fitness_key,
+                reverse=True
+            )
+            final_best = sorted_programs[:1]  # 只返回最佳的一个
+            
+            if final_best:
+                best_prog = final_best[0]
+                logger.info(f"Overall Best Program: {best_prog.id}")
+                logger.info(f"Fitness: {best_prog.fitness_scores}")
+                
+                # 如果是 kissing number 任务，显示详细信息
+                kissing_5d = best_prog.fitness_scores.get("kissing_number_5d")
+                if kissing_5d is not None and kissing_5d > 0:
+                    sota_score = best_prog.fitness_scores.get("sota_score_5d", 0.0)
+                    is_valid = best_prog.fitness_scores.get("kissing_number_5d_valid", 0.0) == 1.0
+                    logger.info(f"5D Kissing Number: {int(kissing_5d)} (SOTA Score: {sota_score:.4f}, Valid: {is_valid})")
+                    
+                    # 与 SOTA 比较
+                    diff = int(kissing_5d) - 40
+                    if diff >= 0:
+                        logger.info(f"相对 SOTA 下界 (40): +{diff} ({'✅ 达到或超过' if diff >= 4 else '✅ 接近'} SOTA)")
+                    else:
+                        logger.info(f"相对 SOTA 下界 (40): {diff} (低于 SOTA)")
+                
+                logger.info(f"Code:\n{best_prog.code}")
+                
+                # 自动导出结果
+                try:
+                    from results_exporter import export_results
+                    export_results(self.task_definition.id)
+                    logger.info("Results exported to 'results/' directory")
+                except Exception as e:
+                    logger.warning(f"Failed to export results: {e}")
+        else:
+            logger.info("No programs found for this task.")
+            final_best = []
+        
         return final_best
 
     async def generate_offspring(self, parent: Program, generation_num: int, child_id: str) -> Optional[Program]:
@@ -193,6 +263,20 @@ class TaskManagerAgent(TaskManagerInterface):
                 "correctness_score": parent.fitness_scores.get("correctness"),
                 "runtime_ms": parent.fitness_scores.get("runtime_ms")
             }
+            
+            # 对于 kissing number 任务，添加 5D kissing number 相关信息
+            if self.task_definition.id and "kissing_number" in self.task_definition.id:
+                kissing_5d = parent.fitness_scores.get("kissing_number_5d")
+                sota_score = parent.fitness_scores.get("sota_score_5d")
+                kissing_5d_valid = parent.fitness_scores.get("kissing_number_5d_valid")
+                
+                if kissing_5d is not None:
+                    feedback["kissing_number_5d"] = kissing_5d
+                if sota_score is not None:
+                    feedback["sota_score_5d"] = sota_score
+                if kissing_5d_valid is not None:
+                    feedback["kissing_number_5d_valid"] = kissing_5d_valid
+            
             feedback = {k: v for k, v in feedback.items() if v is not None}
 
             mutation_prompt = self.prompt_designer.design_mutation_prompt(program=parent, evaluation_feedback=feedback)
@@ -228,7 +312,8 @@ class TaskManagerAgent(TaskManagerInterface):
             generation=generation_num,
             parent_id=parent.id,
             island_id=parent.island_id,  # Inherit island ID from parent
-            status="unevaluated"
+            status="unevaluated",
+            task_id=self.task_definition.id
         )
         logger.info(f"Successfully generated offspring {offspring.id} from parent {parent.id} ({prompt_type}).")
         return offspring

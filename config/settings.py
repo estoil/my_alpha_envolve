@@ -1,5 +1,15 @@
 import os
+import warnings
 from dotenv import load_dotenv
+
+# 抑制 LiteLLM 相关的 Pydantic 序列化警告（不影响功能，只是日志噪音）
+# 这些警告来自 LiteLLM 内部使用 Pydantic 模型时的序列化问题
+# 在导入其他模块之前设置，确保警告被抑制
+# UserWarning 是内置异常类，可以直接使用
+warnings.filterwarnings("ignore", category=UserWarning, module="pydantic")
+warnings.filterwarnings("ignore", message=".*Pydantic.*serializer.*", category=UserWarning)
+warnings.filterwarnings("ignore", message=".*PydanticSerializationUnexpectedValue.*", category=UserWarning)
+warnings.filterwarnings("ignore", message=".*Expected.*fields.*but got.*", category=UserWarning, module="pydantic")
 
 load_dotenv()
 
@@ -19,10 +29,20 @@ EVALUATION_MODEL = os.getenv("EVALUATION_MODEL")
 # LiteLLM Configuration
 LITELLM_DEFAULT_MODEL = os.getenv("LITELLM_DEFAULT_MODEL", "gpt-3.5-turbo")
 LITELLM_DEFAULT_BASE_URL = os.getenv("LITELLM_DEFAULT_BASE_URL", None)
-LITELLM_MAX_TOKENS = os.getenv("LITELLM_MAX_TOKENS")
-LITELLM_TEMPERATURE = os.getenv("LITELLM_TEMPERATURE")
-LITELLM_TOP_P = os.getenv("LITELLM_TOP_P")
-LITELLM_TOP_K = os.getenv("LITELLM_TOP_K")
+
+# Convert string environment variables to appropriate types
+# If not set, use None (LiteLLM will use defaults)
+_max_tokens = os.getenv("LITELLM_MAX_TOKENS")
+LITELLM_MAX_TOKENS = int(_max_tokens) if _max_tokens else None
+
+_temperature = os.getenv("LITELLM_TEMPERATURE")
+LITELLM_TEMPERATURE = float(_temperature) if _temperature else None
+
+_top_p = os.getenv("LITELLM_TOP_P")
+LITELLM_TOP_P = float(_top_p) if _top_p else None
+
+_top_k = os.getenv("LITELLM_TOP_K")
+LITELLM_TOP_K = int(_top_k) if _top_k else None
 
 # Specific model names for strategic use (can be same as LITELLM_DEFAULT_MODEL if only one is used)
 LLM_PRIMARY_MODEL = os.getenv("LLM_PRIMARY_MODEL", LITELLM_DEFAULT_MODEL)
@@ -33,8 +53,8 @@ LLM_SECONDARY_MODEL = os.getenv("LLM_SECONDARY_MODEL", FLASH_MODEL if FLASH_MODE
 #     PRO_API_KEY = "Your API key"
 
 # Evolutionary Algorithm Settings
-POPULATION_SIZE = 5
-GENERATIONS = 2
+POPULATION_SIZE = int(os.getenv("POPULATION_SIZE", "20"))  # Increased from 15 to 20 for better exploration
+GENERATIONS = int(os.getenv("GENERATIONS", "8"))  # Increased from 5 to 8 for more evolution cycles
 # Threshold for switching to bug-fix prompt
 # If a program has errors and its correctness score is below this, a bug-fix prompt will be used.
 BUG_FIX_CORRECTNESS_THRESHOLD = float(os.getenv("BUG_FIX_CORRECTNESS_THRESHOLD", "0.1"))
@@ -45,7 +65,7 @@ MUTATION_RATE = 0.7
 CROSSOVER_RATE = 0.2
 
 # Island Model Settings
-NUM_ISLANDS = 4  # Number of subpopulations
+NUM_ISLANDS = int(os.getenv("NUM_ISLANDS", "5"))  # Increased from 4 to 5 for more diversity
 MIGRATION_INTERVAL = 4  # Number of generations between migrations
 ISLAND_POPULATION_SIZE = POPULATION_SIZE // NUM_ISLANDS  # Programs per island
 MIN_ISLAND_SIZE = 2  # Minimum number of programs per island
